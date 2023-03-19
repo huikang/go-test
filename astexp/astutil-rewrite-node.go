@@ -18,6 +18,15 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 )
 
+var (
+	consulApiStructs = map[string]int{
+		"AgentServiceRegistration": 0,
+		"HealthChecks":             0,
+		"AgentServiceCheck":        0,
+		"HealthCheck":              0,
+	}
+)
+
 func astutilRewriteNode(filename string, funcName string) error {
 	fset := token.NewFileSet()
 	src, err := os.ReadFile(filename)
@@ -46,12 +55,12 @@ func astutilRewriteNode(filename string, funcName string) error {
 
 	foundFuncCallers := map[string]*ast.FuncDecl{}
 	var currFunction *ast.FuncDecl
+	var clusterName string
 	astutil.Apply(file,
 		func(c *astutil.Cursor) bool {
 			n := c.Node()
 			switch x := n.(type) {
 			case *ast.CallExpr:
-				// fmt.Println("DEBUG hui, node is CallExpr")
 				id, ok := x.Fun.(*ast.Ident)
 				if ok {
 					if id.Name == funcName {
@@ -60,7 +69,6 @@ func astutilRewriteNode(filename string, funcName string) error {
 					}
 				}
 			case *ast.FuncDecl:
-				fmt.Println("DEBUG hui, node is FuncDecl, func name", x.Name.Name)
 				currFunction = x
 			}
 			return true
@@ -69,20 +77,42 @@ func astutilRewriteNode(filename string, funcName string) error {
 			n := c.Node()
 			switch x := n.(type) {
 			case *ast.AssignStmt:
-				// rhs := x.Rhs
-				callExp, ok := x.Rhs[0].(*ast.CallExpr)
+
+				name, rewritten := rewriteClusterCreation(c, x, funcName)
+				if rewritten {
+					clusterName = name
+					fmt.Println("Cluster name is", clusterName)
+					return true
+				}
+
+				// rewritten = rewriteConsulApi(c, x)
+				// if rewritten {
+				// 	return true
+				// }
+
+			case *ast.CompositeLit:
+				rewritten := rewriteConsulApi(c, x)
+				if rewritten {
+					return true
+				}
+			case *ast.DeferStmt:
+				if clusterName == "" {
+					return true
+				}
+				selector, ok := x.Call.Fun.(*ast.SelectorExpr)
 				if !ok {
 					return true
 				}
 
-				id, ok := callExp.Fun.(*ast.Ident)
-				if ok {
-					if id.Name == funcName {
-						upgradeNode := clusterUpgradeNode2()
-						c.Replace(upgradeNode)
-					}
+				id, ok := selector.X.(*ast.Ident)
+				if !ok {
+					return true
 				}
-				fmt.Println("DEUBG hui, rewrite")
+
+				if id.Name == clusterName {
+					c.Delete()
+				}
+
 			case *ast.CallExpr:
 				// id, ok := x.Fun.(*ast.Ident)
 				// if ok {
@@ -115,6 +145,50 @@ func astutilRewriteNode(filename string, funcName string) error {
 		return err
 	}
 	return nil
+}
+
+func rewriteConsulApi(c *astutil.Cursor, compositeLit *ast.CompositeLit) bool {
+	// compositeLit, ok := x.Rhs[0].(*ast.CompositeLit)
+	// if !ok {
+	// 	return false
+	// }
+
+	id, ok := compositeLit.Type.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	if _, ok := consulApiStructs[id.Name]; !ok {
+		return false
+	}
+
+	id.Name = "api." + id.Name
+	return true
+}
+
+func rewriteClusterCreation(c *astutil.Cursor, x *ast.AssignStmt, funcName string) (string, bool) {
+	callExp, ok := x.Rhs[0].(*ast.CallExpr)
+	if !ok {
+		return "", false
+	}
+
+	id, ok := callExp.Fun.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+
+	if id.Name != funcName {
+		return "", false
+	}
+
+	upgradeNode := clusterUpgradeNode2()
+	c.Replace(upgradeNode)
+
+	serverIdent, ok := x.Lhs[1].(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	return serverIdent.Name, true
 }
 
 func clusterUpgradeNode2() ast.Node {
@@ -262,11 +336,6 @@ func generatedFilename(filename string) (string, error) {
 	if !strings.Contains(baseFilename, "_test.go") {
 		return "", fmt.Errorf("input isn't go test file: %s", baseFilename)
 	}
-
-	fmt.Printf("Dir %s, base file %s\n", dir, baseFilename)
-
-	// ext := filepath.Ext(baseFilename)
-	// fmt.Println("ext", ext)
 
 	outFilename := strings.Replace(baseFilename, "_test.go", "_generated_test.go", 1)
 

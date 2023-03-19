@@ -39,14 +39,12 @@ func searchFunctionCallerInFile(fn string, filename string) {
 		if n != nil {
 			currPos = int(n.Pos())
 		}
-		// fmt.Println("DEBUG hui, node pos", currPos)
 		if n != nil && currPos >= funcEnd && funcEnd > 0 {
 			fmt.Println("DEBUG hui, function end", currFuncName)
 			currFunction = nil
 		}
 		switch x := n.(type) {
 		case *ast.CallExpr:
-			// fmt.Println("DEBUG hui, node is CallExpr")
 			id, ok := x.Fun.(*ast.Ident)
 			if ok {
 				if id.Name == fn {
@@ -55,28 +53,12 @@ func searchFunctionCallerInFile(fn string, filename string) {
 				}
 			}
 		case *ast.FuncDecl:
-			fmt.Println("DEBUG hui, node is FuncDecl, func name", x.Name.Name)
 			// fmt.Println("	Lbrace", x.Body.Lbrace)
 			// fmt.Println("	Rbrace", x.Body.Rbrace)
 			// fmt.Println("	len ", len(x.Body.List))
 			currFuncName = x.Name.Name
 			currFunction = x
 			funcEnd = int(x.Body.Rbrace)
-		default:
-			// fmt.Printf("DEBUG hui, node type is %T\n", x)
-			// if n, ok := n.(*ast.Ident); ok {
-			// 	fmt.Printf("DEBUG hui, node name is %s\n", n.Name)
-			// }
-			// if n == nil {
-			// 	fmt.Println("DEBUG hui, node is nil", n)
-			// }
-
-			// if n, ok := n.(*ast.Ident); ok {
-			// 	fmt.Printf("DEBUG hui, node name is %s\n", n.Name)
-			// }
-			// if n == nil {
-			// 	fmt.Println("DEBUG hui, node is nil", n)
-			// }
 		}
 		return true
 	})
