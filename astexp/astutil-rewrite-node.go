@@ -24,6 +24,7 @@ var (
 		"HealthChecks":             0,
 		"AgentServiceCheck":        0,
 		"HealthCheck":              0,
+		"QueryOptions":             0,
 	}
 )
 
@@ -56,6 +57,7 @@ func astutilRewriteNode(filename string, funcName string) error {
 	foundFuncCallers := map[string]*ast.FuncDecl{}
 	var currFunction *ast.FuncDecl
 	var clusterName string
+	rewriteNodeName := false
 	astutil.Apply(file,
 		func(c *astutil.Cursor) bool {
 			n := c.Node()
@@ -90,8 +92,26 @@ func astutilRewriteNode(filename string, funcName string) error {
 				// 	return true
 				// }
 
+				useNodeName := hasNodeName(c, x, "nodename")
+				if useNodeName {
+					rewriteNodeName = true
+					c.Delete()
+					fmt.Println("rewriteNodeName set to true", rewriteNodeName)
+					return true
+				}
+
+				rewritten = getAgentStatement(c, x, rewriteNodeName)
+				if rewritten {
+					return true
+				}
+
 			case *ast.CompositeLit:
 				rewritten := rewriteConsulApi(c, x)
+				if rewritten {
+					return true
+				}
+			case *ast.ExprStmt:
+				rewritten := removeClusterSelectorExpr(c, x, clusterName)
 				if rewritten {
 					return true
 				}
@@ -147,6 +167,93 @@ func astutilRewriteNode(filename string, funcName string) error {
 	return nil
 }
 
+func getAgentStatement(c *astutil.Cursor, stmt *ast.AssignStmt, rewriteNodeName bool) bool {
+	callExpr, ok := stmt.Rhs[0].(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	selectorExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	if selectorExpr.Sel.Name != "Agent" {
+		return false
+	}
+
+	if rewriteNodeName {
+		getNodeName := &ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.Ident{
+					Name: "nodename",
+				},
+				&ast.Ident{
+					Name: "_",
+				},
+			},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{
+				&ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X: &ast.Ident{
+							Name: "agent",
+						},
+						Sel: &ast.Ident{
+							Name: "NodeName",
+						},
+					},
+					Lparen:   56,
+					Ellipsis: 0,
+				},
+			},
+		}
+
+		c.InsertAfter(getNodeName)
+	}
+
+	return true
+}
+
+func hasNodeName(c *astutil.Cursor, stmt *ast.AssignStmt, nodename string) bool {
+	id, ok := stmt.Lhs[0].(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	if id.Name != nodename {
+		return false
+	}
+
+	return true
+}
+
+func removeClusterSelectorExpr(c *astutil.Cursor, expr *ast.ExprStmt, clusterName string) bool {
+	if clusterName == "" {
+		return false
+	}
+	callExpr, ok := expr.X.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	selectorExpr, ok := callExpr.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	id, ok := selectorExpr.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+
+	if id.Name != clusterName {
+		return false
+	}
+
+	c.Delete()
+	return true
+}
+
 func rewriteConsulApi(c *astutil.Cursor, compositeLit *ast.CompositeLit) bool {
 	// compositeLit, ok := x.Rhs[0].(*ast.CompositeLit)
 	// if !ok {
@@ -181,8 +288,9 @@ func rewriteClusterCreation(c *astutil.Cursor, x *ast.AssignStmt, funcName strin
 		return "", false
 	}
 
-	upgradeNode := clusterUpgradeNode2()
-	c.Replace(upgradeNode)
+	createClusterNode, upgradeClusterNode := clusterUpgradeNode2()
+	c.Replace(createClusterNode)
+	c.InsertAfter(upgradeClusterNode)
 
 	serverIdent, ok := x.Lhs[1].(*ast.Ident)
 	if !ok {
@@ -191,11 +299,11 @@ func rewriteClusterCreation(c *astutil.Cursor, x *ast.AssignStmt, funcName strin
 	return serverIdent.Name, true
 }
 
-func clusterUpgradeNode2() ast.Node {
-	node := &ast.AssignStmt{
+func clusterUpgradeNode2() (ast.Node, ast.Node) {
+	creatClusterNode := &ast.AssignStmt{
 		Lhs: []ast.Expr{
 			&ast.Ident{
-				Name: "_",
+				Name: "cluster",
 			},
 			&ast.Ident{
 				Name: "_",
@@ -326,7 +434,81 @@ func clusterUpgradeNode2() ast.Node {
 		},
 	}
 
-	return node
+	upgradeFuncNode := &ast.DeferStmt{
+		Defer: 27,
+		Call: &ast.CallExpr{
+			Fun: &ast.FuncLit{
+				Type: &ast.FuncType{
+					Func:   33,
+					Params: &ast.FieldList{},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ExprStmt{
+							X: &ast.CallExpr{
+								Fun: &ast.SelectorExpr{
+									X: &ast.Ident{
+										Name: "require",
+									},
+									Sel: &ast.Ident{
+										Name: "NoError",
+									},
+								},
+								Lparen: 57,
+								Args: []ast.Expr{
+									&ast.Ident{
+										Name: "t",
+									},
+									&ast.CallExpr{
+										Fun: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "cluster",
+											},
+											Sel: &ast.Ident{
+												Name: "StandardUpgrade",
+											},
+										},
+										Lparen: 93,
+										Args: []ast.Expr{
+											&ast.Ident{
+												Name: "t",
+											},
+											&ast.CallExpr{
+												Fun: &ast.SelectorExpr{
+													X: &ast.Ident{
+														Name: "context",
+													},
+													Sel: &ast.Ident{
+														Name: "Background",
+													},
+												},
+												Lparen:   115,
+												Ellipsis: 0,
+											},
+											&ast.SelectorExpr{
+												X: &ast.Ident{
+													Name: "utils",
+												},
+												Sel: &ast.Ident{
+													Name: "LatestVersion",
+												},
+											},
+										},
+										Ellipsis: 0,
+									},
+								},
+								Ellipsis: 0,
+							},
+						},
+					},
+				},
+			},
+			Lparen:   141,
+			Ellipsis: 0,
+		},
+	}
+
+	return creatClusterNode, upgradeFuncNode
 }
 
 func generatedFilename(filename string) (string, error) {

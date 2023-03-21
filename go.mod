@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/armon/go-metrics v0.3.11
 	github.com/hashicorp/consul v1.12.0
-	golang.org/x/tools v0.0.0-20210106214847-113979e3529a
+	golang.org/x/tools v0.7.0
 )
 
 require (
