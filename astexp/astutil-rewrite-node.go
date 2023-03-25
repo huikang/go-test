@@ -47,6 +47,7 @@ func astutilRewriteNode(filename string, funcName string) error {
 	// return nil
 
 	// add imports
+	astutil.AddImport(fset, file, "context")
 	astutil.AddImport(fset, file, "github.com/hashicorp/consul/api")
 	astutil.AddNamedImport(fset, file, "libcluster", "github.com/hashicorp/consul/test/integration/consul-container/libs/cluster")
 	astutil.AddImport(fset, file, "github.com/hashicorp/consul/test/integration/consul-container/libs/topology")
