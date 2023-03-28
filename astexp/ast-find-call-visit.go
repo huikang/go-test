@@ -40,7 +40,6 @@ func searchFunctionCallerInFile(fn string, filename string) {
 			currPos = int(n.Pos())
 		}
 		if n != nil && currPos >= funcEnd && funcEnd > 0 {
-			fmt.Println("DEBUG hui, function end", currFuncName)
 			currFunction = nil
 		}
 		switch x := n.(type) {

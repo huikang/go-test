@@ -1,7 +1,3 @@
-// Apply more intricate AST rewriting to Go code, using the astutil package.
-//
-// Eli Bendersky [https://eli.thegreenplace.net]
-// This code is in the public domain.
 package astexp
 
 import (
