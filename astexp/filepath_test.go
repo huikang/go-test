@@ -50,8 +50,10 @@ func TestMemDBTestCases(t *testing.T) {
 
 	// Create a write transaction
 	txn := db.Txn(true)
+	var curr *UnitTestCase
 	for _, p := range consulTestCases {
-		if err := txn.Insert(unitTestTableName, p); err != nil {
+		curr = p
+		if err := txn.Insert(unitTestTableName, curr); err != nil {
 			panic(err)
 		}
 	}
